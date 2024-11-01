@@ -1936,6 +1936,7 @@ static janus_mutex config_mutex = JANUS_MUTEX_INITIALIZER;
 static volatile gint initialized = 0, stopping = 0;
 static gboolean notify_events = TRUE;
 static gboolean string_ids = FALSE;
+static gboolean recording_summaries = FALSE;
 static gboolean ipv6_disabled = FALSE;
 static janus_callbacks *gateway = NULL;
 static GThread *handler_thread;
@@ -2279,6 +2280,10 @@ static void janus_videoroom_remote_recipient_free(janus_videoroom_remote_recipie
 /* Start / stop recording */
 static void janus_videoroom_recorder_create(janus_videoroom_publisher_stream *ps);
 static void janus_videoroom_recorder_close(janus_videoroom_publisher *participant);
+
+/* Writing summary files after recording stops */
+static void create_participant_summary_file(janus_videoroom_publisher *participant);
+static void create_room_summary_file(janus_videoroom *room);
 
 /* Freeing stuff */
 static void janus_videoroom_subscriber_stream_destroy(janus_videoroom_subscriber_stream *s) {
@@ -3244,6 +3249,12 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 			string_ids = janus_is_true(ids->value);
 		if(string_ids) {
 			JANUS_LOG(LOG_INFO, "VideoRoom will use alphanumeric IDs, not numeric\n");
+		}
+		janus_config_item *summaries = janus_config_get(config, config_general, janus_config_type_item, "recording_summaries");
+		if(summaries != NULL && summaries->value != NULL)
+			recording_summaries = janus_is_true(summaries->value);
+		if(recording_summaries) {
+			JANUS_LOG(LOG_INFO, "VideoRoom will generate recording summaries\n");
 		}
 	}
 	rooms = g_hash_table_new_full(string_ids ? g_str_hash : g_int64_hash, string_ids ? g_str_equal : g_int64_equal,
@@ -4976,6 +4987,10 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			gateway->notify_event(&janus_videoroom_plugin, session ? session->handle : NULL, info);
 		}
 		janus_mutex_unlock(&rooms_mutex);
+		if(recording_summaries && videoroom->record) {
+			/* Write a JSON file containing some details about the room */
+			create_room_summary_file(videoroom);
+		}
 		if(save) {
 			/* This change is permanent: save to the configuration file too
 			 * FIXME: We should check if anything fails... */
@@ -8398,16 +8413,126 @@ static void janus_videoroom_recorder_create(janus_videoroom_publisher_stream *ps
 	}
 }
 
+static void make_participant_metadata_filename(char *filename, size_t maxlen, janus_videoroom_publisher *participant) {
+	if (participant->recording_base) {
+		/* Use the filename and path we have been provided */
+		g_snprintf(filename, maxlen, "%s/%s.json", participant->room->rec_dir, participant->recording_base);
+	} else {
+		/* Build a filename */
+		g_snprintf(filename, maxlen, "%s/videoroom-%s-user-%s.json",
+			participant->room->rec_dir, participant->room_id_str, participant->user_id_str);
+	}
+}
+
+static void create_participant_summary_file(janus_videoroom_publisher *participant) {
+	/* Create a summary file for this participant in JSON format */
+
+	if(!participant->streams) {
+		JANUS_LOG(LOG_INFO, "Not creating summary file for participant %s -- no streams\n", participant->user_id_str);
+		return;
+	}
+
+	char filename[1024];
+	make_participant_metadata_filename(filename, sizeof(filename), participant);
+
+	FILE *file = fopen(filename, "wt");
+	if(file == NULL) {
+		JANUS_LOG(LOG_ERR, "Error creating file %s...\n", filename);
+	} else {
+		//initializing date and time
+		time_t t = time(NULL);
+		struct tm *tmv = localtime(&t);
+		char timestamp[200];
+		strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tmv);
+
+		json_t *log = json_object();
+
+		json_object_set_new(log, "id",    json_string(participant->user_id_str));
+		json_object_set_new(log, "name",  json_string(participant->display ? participant->display : "-"));
+		json_object_set_new(log, "date",  json_string(timestamp));
+
+		json_t *streams = json_array();
+		json_object_set_new(log, "streams", streams);
+
+		GList *temp = participant->streams;
+		while(temp) {
+			/* Write a line for each stream that has an associated recording filename (e.g. "audio = (filename)\r\n") */
+			janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+			if (ps->rc && ps->rc->filename) {
+				json_t *stream = json_object();
+				json_object_set_new(stream, "type", json_string(janus_videoroom_media_str(ps->type)));
+				json_object_set_new(stream, "filename", json_string(ps->rc->filename));
+				json_array_append_new(streams, stream);
+			}
+			temp = temp->next;
+		}
+
+		json_dumpf(log, file, 0);
+		json_decref(log);
+
+		fclose(file);
+	}
+}
+
+static void create_room_summary_file(janus_videoroom *room) {
+	/* Create a summary file for this videoroom in JSON format */
+
+	char filename[1024];
+	g_snprintf(filename, sizeof(filename), "%s/videoroom.json", room->rec_dir);
+
+	FILE *file = fopen(filename, "wt");
+	if(file == NULL) {
+		JANUS_LOG(LOG_ERR, "Error creating file %s...\n", filename);
+	} else {
+		time_t t = time(NULL);
+		struct tm *tmv = localtime(&t);
+		char timestamp[200];
+		strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tmv);
+
+		json_t *log = json_object();
+
+		json_object_set_new(log, "id",    json_integer(room->room_id));
+		json_object_set_new(log, "date",  json_string(timestamp));
+
+		if(room->room_name) {
+			/* Try to parse the room as a JSON chunk */
+			json_t *metadata = json_loads(room->room_name, 0, NULL);
+			if(metadata)	/* success */
+				json_object_set_new(log, "metadata", metadata);
+			else			/* not JSON -- just store the (string) description as-is */
+				json_object_set_new(log, "description", json_string(room->room_name));
+		}
+
+		json_dumpf(log, file, 0);
+		json_decref(log);
+
+		fclose(file);
+	}
+}
+
 static void janus_videoroom_recorder_close(janus_videoroom_publisher *participant) {
-	GList *temp = participant->streams;
+	GList *temp;
+	
+	temp = participant->streams;
+	while(temp) {
+		janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+		if(ps->rc) {
+			janus_recorder_close(ps->rc);
+			JANUS_LOG(LOG_INFO, "Closed %s recording %s\n", janus_videoroom_media_str(ps->type),
+				ps->rc->filename ? ps->rc->filename : "??");
+		}
+		temp = temp->next;
+	}
+
+	if (recording_summaries)
+		create_participant_summary_file(participant);
+
+	temp = participant->streams;
 	while(temp) {
 		janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
 		if(ps->rc) {
 			janus_recorder *rc = ps->rc;
 			ps->rc = NULL;
-			janus_recorder_close(rc);
-			JANUS_LOG(LOG_INFO, "Closed %s recording %s\n", janus_videoroom_media_str(ps->type),
-				rc->filename ? rc->filename : "??");
 			janus_recorder_destroy(rc);
 		}
 		temp = temp->next;
@@ -10014,7 +10139,7 @@ static void *janus_videoroom_handler(void *data) {
 						/* We've started recording, send a PLI/FIR and go on */
 						GList *temp = participant->streams;
 						while(temp) {
-							janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
+							janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data ;
 							janus_videoroom_recorder_create(ps);
 							if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 								/* Send a PLI */
