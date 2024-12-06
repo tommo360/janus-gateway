@@ -3493,7 +3493,8 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				videoroom->transport_wide_cc_ext = janus_is_true(transport_wide_cc_ext->value);
 			if(record && record->value) {
 				videoroom->record = janus_is_true(record->value);
-				videoroom->has_ever_recorded ||= videoroom->record;
+				if (videoroom->record)
+					videoroom->has_ever_recorded = 1;
 			}
 			videoroom->has_ever_recorded = videoroom->record;
 			if(rec_dir && rec_dir->value) {
@@ -4550,7 +4551,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		videoroom->notify_joining = notify_joining ? json_is_true(notify_joining) : FALSE;
 		if(record) {
 			videoroom->record = json_is_true(record);
-			videoroom->has_ever_recorded ||= videoroom->record;
+			if (videoroom->record)
+				videoroom->has_ever_recorded = 1;
 		}
 		videoroom->has_ever_recorded = videoroom->record;
 		if(rec_dir) {
@@ -6469,7 +6471,8 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if (room_new_recording_active != videoroom->record) {
 			/* Room recording state has changed */
 			videoroom->record = room_new_recording_active;
-			videoroom->has_ever_recorded ||= videoroom->record;
+			if (videoroom->record)
+				videoroom->has_ever_recorded = 1;
 			/* Iterate over all participants */
 			gpointer value;
 			GHashTableIter iter;
