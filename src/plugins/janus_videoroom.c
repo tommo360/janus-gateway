@@ -2030,6 +2030,7 @@ typedef struct janus_videoroom {
 	gboolean playoutdelay_ext;	/* Whether the playout-delay extension must be negotiated or not for new publishers */
 	gboolean transport_wide_cc_ext;	/* Whether the transport wide cc extension must be negotiated or not for new publishers */
 	gboolean record;			/* Whether the feeds from publishers in this room should be recorded */
+	gboolean has_ever_recorded;	/* Whether recording has ever been enabled in this room */
 	char *rec_dir;				/* Where to save the recordings of this room, if enabled */
 	gboolean lock_record;		/* Whether recording state can only be changed providing the room secret */
 	GHashTable *participants;	/* Map of potential publishers (we get subscribers from them) */
@@ -3492,7 +3493,9 @@ int janus_videoroom_init(janus_callbacks *callback, const char *config_path) {
 				videoroom->transport_wide_cc_ext = janus_is_true(transport_wide_cc_ext->value);
 			if(record && record->value) {
 				videoroom->record = janus_is_true(record->value);
+				videoroom->has_ever_recorded ||= videoroom->record;
 			}
+			videoroom->has_ever_recorded = videoroom->record;
 			if(rec_dir && rec_dir->value) {
 				videoroom->rec_dir = g_strdup(rec_dir->value);
 			}
@@ -4547,7 +4550,9 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		videoroom->notify_joining = notify_joining ? json_is_true(notify_joining) : FALSE;
 		if(record) {
 			videoroom->record = json_is_true(record);
+			videoroom->has_ever_recorded ||= videoroom->record;
 		}
+		videoroom->has_ever_recorded = videoroom->record;
 		if(rec_dir) {
 			videoroom->rec_dir = g_strdup(json_string_value(rec_dir));
 		}
@@ -4987,7 +4992,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 			gateway->notify_event(&janus_videoroom_plugin, session ? session->handle : NULL, info);
 		}
 		janus_mutex_unlock(&rooms_mutex);
-		if(recording_summaries && videoroom->record) {
+		if(recording_summaries && videoroom->has_ever_recorded) {
 			/* Write a JSON file containing some details about the room */
 			create_room_summary_file(videoroom);
 		}
@@ -6464,6 +6469,7 @@ static json_t *janus_videoroom_process_synchronous_request(janus_videoroom_sessi
 		if (room_new_recording_active != videoroom->record) {
 			/* Room recording state has changed */
 			videoroom->record = room_new_recording_active;
+			videoroom->has_ever_recorded ||= videoroom->record;
 			/* Iterate over all participants */
 			gpointer value;
 			GHashTableIter iter;
