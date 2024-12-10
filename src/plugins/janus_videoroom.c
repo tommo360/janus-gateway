@@ -9361,6 +9361,7 @@ static void janus_videoroom_recorder_close(janus_videoroom_publisher *participan
 
 	if(recording_summaries && participant->room->has_ever_recorded) {
 		create_participant_summary_file(participant);
+	}
 
 	temp = participant->streams;
 	while(temp) {
@@ -11128,7 +11129,7 @@ static void *janus_videoroom_handler(void *data) {
 						janus_mutex_lock(&participant->streams_mutex);
 						GList *temp = participant->streams;
 						while(temp) {
-							janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data ;
+							janus_videoroom_publisher_stream *ps = (janus_videoroom_publisher_stream *)temp->data;
 							janus_videoroom_recorder_create(ps);
 							if(ps->type == JANUS_VIDEOROOM_MEDIA_VIDEO) {
 								/* Send a PLI */
