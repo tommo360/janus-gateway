@@ -1532,7 +1532,7 @@ static void *janus_sip_relay_thread(void *data);
 static void janus_sip_media_cleanup(janus_sip_session *session);
 static void janus_sip_check_rfc2833(janus_sip_session *session, char *buffer, int len);
 
-/* URI parsing utilies */
+/* URI parsing utilities */
 
 #define JANUS_SIP_URI_MAXLEN	1024
 typedef struct {
@@ -2965,13 +2965,13 @@ static void *janus_sip_handler(void *data) {
 			gboolean send_register = TRUE;
 			json_t *do_register = json_object_get(root, "send_register");
 			if(do_register != NULL) {
-				if(guest) {
+				send_register = json_is_true(do_register);
+				if(guest && send_register) {
 					JANUS_LOG(LOG_ERR, "Conflicting elements: send_register cannot be true if guest is true\n");
 					error_code = JANUS_SIP_ERROR_INVALID_ELEMENT;
 					g_snprintf(error_cause, 512, "Conflicting elements: send_register cannot be true if guest is true");
 					goto error;
 				}
-				send_register = json_is_true(do_register);
 			}
 
 			gboolean sips = FALSE;
@@ -5656,7 +5656,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			if(status >= 200 && ssip != NULL) {
 				/* Check if this session (and/or its helpers) had dangling
 				 * references for ongoing calls: we won't receive other events
-				 * after this, so it's up to us to clean up after ourselfes */
+				 * after this, so it's up to us to clean up after ourselves */
 				janus_mutex_lock(&session->mutex);
 				while(session->active_calls) {
 					janus_sip_session *s = (janus_sip_session *)session->active_calls->data;
@@ -5687,7 +5687,7 @@ void janus_sip_sofia_callback(nua_event_t event, int status, char const *phrase,
 			break;
 		case nua_r_message:
 			JANUS_LOG(LOG_VERB, "[%s][%s]: %d %s\n", session->account.username, nua_event_name(event), status, phrase ? phrase : "??");
-			/* Handle authetntication for SIP MESSAGE - eg. SippySoft Softswitch requires 401 authentication even if SIP user is registerered */
+			/* Handle authentication for SIP MESSAGE - eg. SippySoft Softswitch requires 401 authentication even if SIP user is registered */
 			if(status == 401 || status == 407) {
 				const char *scheme = NULL;
 				const char *realm = NULL;

@@ -808,6 +808,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, co
 						pts = g_list_append(pts, GINT_TO_POINTER(pt));
 					} else {
 						/* Payload type for codec found */
+						g_list_free(pts);
 						return pt;
 					}
 				}
@@ -833,6 +834,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, co
 						if(strstr(a->value, profile_id) != NULL) {
 							/* Found */
 							JANUS_LOG(LOG_VERB, "VP9 profile %s found --> %d\n", profile, pt);
+							g_list_free(pts);
 							return pt;
 						}
 					} else if(h264 && strstr(a->value, "packetization-mode=0") == NULL) {
@@ -844,6 +846,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, co
 						if(strstr(a->value, profile_level_id) != NULL) {
 							/* Found */
 							JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
+							g_list_free(pts);
 							return pt;
 						}
 						/* Not found, try converting the profile to upper case */
@@ -853,6 +856,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, co
 						if(strstr(a->value, profile_level_id) != NULL) {
 							/* Found */
 							JANUS_LOG(LOG_VERB, "H.264 profile %s found --> %d\n", profile, pt);
+							g_list_free(pts);
 							return pt;
 						}
 					}
@@ -860,8 +864,7 @@ int janus_sdp_get_codec_pt_full(janus_sdp *sdp, int index, const char *codec, co
 				ma = ma->next;
 			}
 		}
-		if(pts != NULL)
-			g_list_free(pts);
+		g_list_free(pts);
 		if(index != -1)
 			break;
 		ml = ml->next;
@@ -2208,7 +2211,7 @@ int janus_sdp_generate_answer_mline(janus_sdp *offer, janus_sdp *answer, janus_s
 						a = janus_sdp_attribute_create("rtcp-fb", "%d goog-remb", pt);
 						am->attributes = g_list_append(am->attributes, a);
 					}
-					/* It is safe to add transport-wide rtcp feedback mesage here, won't be used unless the header extension is negotiated*/
+					/* It is safe to add transport-wide rtcp feedback message here, won't be used unless the header extension is negotiated*/
 					a = janus_sdp_attribute_create("rtcp-fb", "%d transport-cc", pt);
 					am->attributes = g_list_append(am->attributes, a);
 				}

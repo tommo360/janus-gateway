@@ -813,7 +813,7 @@ room-<unique room ID>: {
  * or restarts take place, they MUST follow the same negotiation pattern
  * as the one that originated the connection: it's an error to send an
  * SDP offer to the plugin to update a PeerConnection, if the plugin sent
- * you an offer originally. It's adviced to let users generate the offer,
+ * you an offer originally. It's advised to let users generate the offer,
  * and let the plugin answer: this reverserd role is mostly here to
  * facilitate the setup of cascaded mixers, e.g., allow one AudioBridge
  * to connect to the other via WebRTC (which wouldn't be possible if
@@ -7801,7 +7801,7 @@ static void *janus_audiobridge_handler(void *data) {
 			if(sdp != NULL) {
 				participant->opus_pt = janus_sdp_get_codec_pt(sdp, -1, "opus");
 				if(participant->opus_pt > 0 && strstr(msg_sdp, "useinbandfec=1")){
-					/* Opus codec, inband FEC setted */
+					/* Opus codec, inband FEC set */
 					participant->fec = TRUE;
 					participant->probation = MIN_SEQUENTIAL;
 					opus_encoder_ctl(participant->encoder, OPUS_SET_INBAND_FEC(participant->fec));
@@ -8805,12 +8805,13 @@ static void *janus_audiobridge_participant_thread(void *data) {
 					rtp = (janus_rtp_header *)buffer;
 					/* If this is Opus, check if there's a packet gap we should fix with FEC */
 					use_fec = FALSE;
-					if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && participant->fec) {
-						if(ntohs(rtp->seq_number) == (participant->expected_seq + 1)) {
-							/* Lost a packet here? Use FEC to recover */
-							use_fec = TRUE;
-						}
-					}
+					/* FIXME Temporarily disable inbound FEC due to potential deadlocks */
+					//if(!first && participant->codec == JANUS_AUDIOCODEC_OPUS && participant->fec) {
+					//	if(ntohs(rtp->seq_number) == (participant->expected_seq + 1)) {
+					//		/* Lost a packet here? Use FEC to recover */
+					//		use_fec = TRUE;
+					//	}
+					//}
 					first = FALSE;
 					if(use_fec) {
 						/* There was a gap, try to get decode from redundant info first */
