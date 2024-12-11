@@ -8556,6 +8556,7 @@ static void janus_videoroom_recorder_close(janus_videoroom_publisher *participan
 
 	if(recording_summaries && participant->room->has_ever_recorded) {
 		create_participant_summary_file(participant);
+	}
 
 	temp = participant->streams;
 	while(temp) {
