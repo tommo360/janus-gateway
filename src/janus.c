@@ -518,7 +518,12 @@ int refcount_debug = 0;
 
 
 /*! \brief Signal handler (just used to intercept CTRL+C and SIGTERM) */
-static void janus_handle_signal(int signum) {
+static void janus_handle_signal(int signum, siginfo_t *info, void *context) {
+    if (info) {
+        printf("Signal %d received from PID: %d\n", signum, info->si_pid);
+    } else {
+        printf("Signal %d received with no sender info\n", signum);
+    }
 	stop_signal = signum;
 	switch(g_atomic_int_get(&stop)) {
 		case 0:
@@ -4725,8 +4730,12 @@ gint main(int argc, char *argv[]) {
 	JANUS_PRINT("---------------------------------------------------\n\n");
 
 	/* Handle SIGINT (CTRL-C), SIGTERM (from service managers) */
-	signal(SIGINT, janus_handle_signal);
-	signal(SIGTERM, janus_handle_signal);
+    struct sigaction sa;
+    sa.sa_flags = SA_SIGINFO; // Use SA_SIGINFO to get siginfo_t
+    sa.sa_sigaction = janus_handle_signal;
+
+	sigaction(SIGINT, &sa, NULL);
+	sigaction(SIGTERM, &sa, NULL);
 	atexit(janus_termination_handler);
 
 	/* Setup Glib */
