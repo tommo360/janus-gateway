@@ -9359,8 +9359,13 @@ static void janus_videoroom_recorder_close(janus_videoroom_publisher *participan
 		temp = temp->next;
 	}
 
-	if(recording_summaries && participant->room->has_ever_recorded) {
-		create_participant_summary_file(participant);
+	if(recording_summaries) {
+        if (participant->room) {
+            if (participant->room->has_ever_recorded)
+		        create_participant_summary_file(participant);
+        } else {
+			JANUS_LOG(LOG_INFO, "Ignoring participant %s with no room", participant->user_id_str);
+        }
 	}
 
 	temp = participant->streams;
